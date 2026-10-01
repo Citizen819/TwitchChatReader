@@ -93,22 +93,10 @@ MIT
 
 <table>
   <tr>
-    <th>1 / 1</th>
-    <th>2 / 2</th>
-    <th>3 / 3</th>
-    <th>4 / 4</th>
-  </tr>
-  <tr>
-    <td><img src="screenshots/1.png" width="400"></td>
-    <td><img src="screenshots/2.png" width="400"></td>
-    <td><img src="screenshots/3.png" width="400"></td>
-    <td><img src="screenshots/4.png" width="400"></td>
-  </tr>
-  <tr>
-    <th>1 / 1</th>
-    <th>2 / 2</th>
-    <th>3 / 3</th>
-    <th>4 / 4</th>
+    <th>Чат / Chat</th>
+    <th>Списки / Lists</th>
+    <th>Фильтры / Filters</th>
+    <th>Голос / Voice</th>
   </tr>
   <tr>
     <td><img src="screenshots/1.png" width="400"></td>
