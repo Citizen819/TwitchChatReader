@@ -3,10 +3,10 @@
 TwitchChatReader — озвучка чата Twitch через edge-tts + GUI.
 Developer: Dasti
 Требования: pip install edge-tts playsound3
+Опционально: pip install pydub  (+ ffmpeg для регулировки общей громкости)
 """
 
 import os
-import sys
 import re
 import json
 import time
@@ -27,9 +27,12 @@ import edge_tts
 #                       ВЕРСИЯ И ССЫЛКИ
 # ==================================================================
 APP_NAME = "TwitchChatReader"
-APP_VERSION = "4.1.3"
+APP_VERSION = "4.4.4"
 APP_AUTHOR = "Dasti"
 REPO_URL = "https://github.com/Citizen819/TwitchChatReader"
+PYTHON_DOWNLOAD_URL = "https://www.python.org/downloads/"
+EDGE_TTS_URL = "https://pypi.org/project/edge-tts/"
+EDGE_TTS_GITHUB_URL = "https://github.com/rany2/edge-tts"
 DONATE_URLS = [
     ("donate.stream", "https://donate.stream/3Kster"),
     ("DonatePay", "https://donatepay.ru/don/1433265"),
@@ -74,6 +77,7 @@ TRANSLATIONS = {
         "btn_remove_selected": "− Удалить выбранного",
         "btn_save_file": "💾 Сохранить в файл",
         "btn_reload_file": "🔄 Перечитать из файла",
+        "btn_refresh_lists": "🔄 Обновить списки",
         "filter_commands": "Фильтровать команды (начинающиеся с ! / .)",
         "filter_bots": "Фильтровать ботов (nightbot и все *bot)",
         "filter_links": "Фильтровать ссылки",
@@ -94,11 +98,13 @@ TRANSLATIONS = {
         "bots_frame": "Имена ботов (по одному в строке)",
         "voice_label": "Голос (edge-tts):",
         "voice_rate": "Скорость (-50 .. +100 %):",
-        "voice_volume": "Громкость (-50 .. +50 %):",
+        "voice_volume": "Громкость edge-tts (-100 .. +50 %):",
         "voice_pitch": "Тембр (-50 .. +50 Hz):",
+        "master_volume": "Общая громкость воспроизведения (0 .. 100 %):",
         "btn_test_voice": "🔊 Тест голоса",
         "voice_note": "edge-tts требует подключения к интернету.\n"
-                      "Изменения применятся при следующем сообщении.",
+                      "«Общая громкость» работает через pydub + ffmpeg.\n"
+                      "Если не работает — установите: pip install pydub",
         "fmt_frame": "Формат озвучки",
         "read_username": "Читать ник пользователя",
         "read_says_word": "Читать слово «пишет»",
@@ -133,6 +139,19 @@ TRANSLATIONS = {
         "upd_history": "История изменений:",
         "upd_hint": "Чтобы обновиться — скачайте свежий TwitchChatReader.py из репозитория\n"
                     "и замените старый файл. Настройки и списки сохранятся.",
+        "upd_warning": "⚠️ ЕСЛИ ЧТО-ТО НЕ РАБОТАЕТ — ОБНОВИТЕ PYTHON И БИБЛИОТЕКИ! ⚠️",
+        "upd_warning_hint": "Установите свежий Python и выполните:\n"
+                            "pip install --upgrade edge-tts playsound3\n"
+                            "Опционально для громкости: pip install pydub",
+        "upd_deps_frame": "Обновление зависимостей",
+        "upd_python_label": "Python:",
+        "upd_python_hint": "Скачайте свежую версию Python с официального сайта.",
+        "upd_edge_tts_label": "Библиотека edge-tts:",
+        "upd_edge_tts_hint": "Установить или обновить: pip install --upgrade edge-tts",
+        "upd_btn_open_python": "🌐 Скачать Python",
+        "upd_btn_open_edge": "🌐 PyPI",
+        "upd_btn_open_edge_gh": "🌐 GitHub",
+        "upd_btn_copy_cmd": "📋 Копировать команду",
         "don_title": "💰 Поддержать стримера",
         "don_subtitle": "Спасибо, что смотришь стрим! Любая поддержка "
                         "помогает развивать канал 💚",
@@ -149,7 +168,7 @@ TRANSLATIONS = {
         "soc_note": "Кнопки открывают страницы в браузере по умолчанию.\n"
                     "Ссылку можно скопировать и поделиться с друзьями.",
         "btn_save_settings": "💾 Сохранить настройки",
-        "log_copied": "📋 Ссылка скопирована: {url}",
+        "log_copied": "📋 Скопировано: {url}",
         "log_opened": "🌐 Открыто: {name}",
         "log_open_error": "⚠️ Не удалось открыть браузер: {error}",
         "log_copy_error": "⚠️ Не удалось скопировать: {error}",
@@ -157,6 +176,7 @@ TRANSLATIONS = {
         "log_clipboard_empty": "⚠️ Буфер обмена пуст",
         "log_lists_saved": "💾 Списки сохранены в файл",
         "log_lists_reloaded": "🔄 Списки перечитаны из файла",
+        "log_lists_refreshed": "🔄 Списки обновлены в интерфейсе",
         "log_all_saved": "💾 Все настройки сохранены",
         "log_lang_changed": "🌍 Язык переключён на: {lang}",
         "log_lang_reload_hint": "ℹ️ Заголовки вкладок и окна обновлены. "
@@ -197,6 +217,17 @@ TRANSLATIONS = {
         "log_removed_black": "♻️ Убран из бана: {name}",
         "log_added_white": "✅ Добавлен в белый список: {name}",
         "log_removed_white": "➖ Убран из белого списка: {name}",
+        "log_debug_black": "🔎 login={login} | blacklist={black} | hit={hit}",
+        "log_pydub_missing": "⚠️ pydub не установлен — общая громкость не работает. "
+                             "Установите: pip install pydub (и ffmpeg)",
+        "log_pydub_ok": "✅ pydub загружен — общая громкость работает",
+        "ctx_undo": "Отмена",
+        "ctx_redo": "Вернуть",
+        "ctx_cut": "Вырезать",
+        "ctx_copy": "Копировать",
+        "ctx_paste": "Вставить",
+        "ctx_delete": "Удалить",
+        "ctx_select_all": "Выделить всё",
     },
     "en": {
         "app_title": "{name} — v{version} by {author}",
@@ -226,6 +257,7 @@ TRANSLATIONS = {
         "btn_remove_selected": "− Remove selected",
         "btn_save_file": "💾 Save to file",
         "btn_reload_file": "🔄 Reload from file",
+        "btn_refresh_lists": "🔄 Refresh lists",
         "filter_commands": "Filter commands (starting with ! / .)",
         "filter_bots": "Filter bots (nightbot and all *bot)",
         "filter_links": "Filter links",
@@ -246,11 +278,13 @@ TRANSLATIONS = {
         "bots_frame": "Bot names (one per line)",
         "voice_label": "Voice (edge-tts):",
         "voice_rate": "Rate (-50 .. +100 %):",
-        "voice_volume": "Volume (-50 .. +50 %):",
+        "voice_volume": "edge-tts volume (-100 .. +50 %):",
         "voice_pitch": "Pitch (-50 .. +50 Hz):",
+        "master_volume": "Master playback volume (0 .. 100 %):",
         "btn_test_voice": "🔊 Test voice",
         "voice_note": "edge-tts requires an internet connection.\n"
-                      "Changes will apply to the next message.",
+                      "«Master volume» works via pydub + ffmpeg.\n"
+                      "If it doesn't work — install: pip install pydub",
         "fmt_frame": "Speech format",
         "read_username": "Read username",
         "read_says_word": "Read the word \"says\"",
@@ -285,6 +319,19 @@ TRANSLATIONS = {
         "upd_history": "Changelog:",
         "upd_hint": "To update — download the latest TwitchChatReader.py from the repo\n"
                     "and replace the old file. Settings and lists are preserved.",
+        "upd_warning": "⚠️ IF SOMETHING DOESN'T WORK — UPDATE PYTHON AND LIBRARIES! ⚠️",
+        "upd_warning_hint": "Install the latest Python and run:\n"
+                            "pip install --upgrade edge-tts playsound3\n"
+                            "Optional for volume: pip install pydub",
+        "upd_deps_frame": "Dependency updates",
+        "upd_python_label": "Python:",
+        "upd_python_hint": "Download the latest Python from the official site.",
+        "upd_edge_tts_label": "edge-tts library:",
+        "upd_edge_tts_hint": "Install or update: pip install --upgrade edge-tts",
+        "upd_btn_open_python": "🌐 Download Python",
+        "upd_btn_open_edge": "🌐 PyPI",
+        "upd_btn_open_edge_gh": "🌐 GitHub",
+        "upd_btn_copy_cmd": "📋 Copy command",
         "don_title": "💰 Support the streamer",
         "don_subtitle": "Thanks for watching! Any support helps the channel grow 💚",
         "don_btn_open": "🌐 Open {name}",
@@ -299,7 +346,7 @@ TRANSLATIONS = {
         "soc_note": "Buttons open pages in your default browser.\n"
                     "You can copy a link and share it with friends.",
         "btn_save_settings": "💾 Save settings",
-        "log_copied": "📋 Link copied: {url}",
+        "log_copied": "📋 Copied: {url}",
         "log_opened": "🌐 Opened: {name}",
         "log_open_error": "⚠️ Could not open browser: {error}",
         "log_copy_error": "⚠️ Could not copy: {error}",
@@ -307,6 +354,7 @@ TRANSLATIONS = {
         "log_clipboard_empty": "⚠️ Clipboard is empty",
         "log_lists_saved": "💾 Lists saved to file",
         "log_lists_reloaded": "🔄 Lists reloaded from file",
+        "log_lists_refreshed": "🔄 Lists refreshed in UI",
         "log_all_saved": "💾 All settings saved",
         "log_lang_changed": "🌍 Language switched to: {lang}",
         "log_lang_reload_hint": "ℹ️ Tab and window titles updated. "
@@ -347,12 +395,22 @@ TRANSLATIONS = {
         "log_removed_black": "♻️ Removed from ban: {name}",
         "log_added_white": "✅ Added to whitelist: {name}",
         "log_removed_white": "➖ Removed from whitelist: {name}",
+        "log_debug_black": "🔎 login={login} | blacklist={black} | hit={hit}",
+        "log_pydub_missing": "⚠️ pydub not installed — master volume disabled. "
+                             "Install: pip install pydub (and ffmpeg)",
+        "log_pydub_ok": "✅ pydub loaded — master volume ready",
+        "ctx_undo": "Undo",
+        "ctx_redo": "Redo",
+        "ctx_cut": "Cut",
+        "ctx_copy": "Copy",
+        "ctx_paste": "Paste",
+        "ctx_delete": "Delete",
+        "ctx_select_all": "Select all",
     },
 }
 
 
 def tr(key, lang="ru", **kwargs):
-    """Возвращает перевод по ключу."""
     table = TRANSLATIONS.get(lang, TRANSLATIONS["ru"])
     text = table.get(key, TRANSLATIONS["ru"].get(key, key))
     if kwargs:
@@ -371,8 +429,6 @@ DEFAULT_CONFIG = {
     "oauth_token": "",
     "bot_name": "tts_bot",
     "language": "ru",
-
-    # Фильтры
     "filter_commands": True,
     "command_prefixes": ["!", "/", "."],
     "filter_bots": True,
@@ -403,25 +459,18 @@ DEFAULT_CONFIG = {
         "follow for follow", "f4f", "l2p", "get rekt",
     ],
     "censor_stopwords": True,
-
-    # Списки
     "blacklist": [],
     "whitelist": [],
     "allow_chat_commands": True,
     "command_permission": ["broadcaster", "moderator"],
-
-    # Голос
     "voice_name": "ru-RU-DmitryNeural",
     "voice_rate": 0,
     "voice_volume": 0,
     "voice_pitch": 0,
-
-    # Формат озвучки
+    "master_volume": 100,
     "read_username": True,
     "read_says_word": True,
     "speech_template": "{name} пишет: {text}",
-
-    # Файлы
     "lists_file": "tts_lists.json",
     "config_file": "tts_config.json",
 }
@@ -451,6 +500,109 @@ EMOJI_PATTERN = re.compile(
 
 
 # ==================================================================
+#          УТИЛИТЫ: КОДЫ КЛАВИШ, РАБОТА С ТЕКСТОМ
+# ==================================================================
+KEYCODE_C = 67
+KEYCODE_V = 86
+KEYCODE_X = 88
+KEYCODE_A = 65
+KEYCODE_Z = 90
+KEYCODE_Y = 89
+KEYCODE_DELETE = 46
+
+
+def _has_selection(widget):
+    try:
+        widget.selection_get()
+        return True
+    except tk.TclError:
+        return False
+
+
+def _delete_selection(widget):
+    try:
+        widget.delete("sel.first", "sel.last")
+        return True
+    except tk.TclError:
+        return False
+
+
+def _paste(widget, entry_mode=True):
+    try:
+        text = widget.clipboard_get()
+    except tk.TclError:
+        return
+    if entry_mode:
+        text = text.replace("\r", " ").replace("\n", " ")
+    else:
+        text = text.replace("\r", "")
+    _delete_selection(widget)
+    widget.insert("insert", text)
+
+
+def _copy(widget, root):
+    try:
+        text = widget.selection_get()
+    except tk.TclError:
+        return
+    try:
+        root.clipboard_clear()
+        root.clipboard_append(text)
+    except tk.TclError:
+        pass
+
+
+def _cut(widget, root, entry_mode=True):
+    _copy(widget, root)
+    _delete_selection(widget)
+
+
+def _select_all(widget, entry_mode=True):
+    if entry_mode:
+        try:
+            widget.select_range(0, "end")
+            widget.icursor("end")
+        except tk.TclError:
+            pass
+    else:
+        try:
+            widget.tag_add("sel", "1.0", "end")
+        except tk.TclError:
+            pass
+
+
+try:
+    from pydub import AudioSegment
+    PYDUB_AVAILABLE = True
+except Exception:
+    PYDUB_AVAILABLE = False
+
+
+def apply_master_volume(mp3_path, master_volume):
+    if not PYDUB_AVAILABLE:
+        return mp3_path
+    if master_volume >= 100:
+        return mp3_path
+
+    try:
+        audio = AudioSegment.from_file(mp3_path, format="mp3")
+        if master_volume <= 0:
+            silent = AudioSegment.silent(duration=len(audio))
+            silent.export(mp3_path, format="mp3")
+        else:
+            delta_db = 20 * (master_volume / 100.0)
+            if delta_db <= 0:
+                new_audio = audio.apply_gain(delta_db)
+            else:
+                new_audio = audio
+            new_audio.export(mp3_path, format="mp3")
+    except Exception:
+        pass
+
+    return mp3_path
+
+
+# ==================================================================
 #                          ЯДРО БОТА
 # ==================================================================
 class TTSChatBot:
@@ -462,8 +614,9 @@ class TTSChatBot:
         self.sock = None
 
         self.lists_lock = threading.Lock()
-        self.blacklist = set(n.lower() for n in config.get("blacklist", []))
-        self.whitelist = set(n.lower() for n in config.get("whitelist", []))
+        self.blacklist = set()
+        self.whitelist = set()
+        self._lists_loaded = False
 
         self.user_message_history = defaultdict(lambda: deque(maxlen=10))
         self.history_lock = threading.Lock()
@@ -478,21 +631,33 @@ class TTSChatBot:
 
     # ------------------ ОЗВУЧКА ------------------
     def _build_rate_str(self, value):
-        return f"{value:+d}%"
+        return f"{int(value):+d}%"
 
     def _build_volume_str(self, value):
-        return f"{value:+d}%"
+        v = int(value)
+        if v < -100:
+            v = -100
+        if v > 50:
+            v = 50
+        return f"{v:+d}%"
 
     def _build_pitch_str(self, value):
-        return f"{value:+d}Hz"
+        return f"{int(value):+d}Hz"
 
-    async def _synthesize(self, text, output_file):
+    async def _synthesize(self, text, output_file, override=None):
+        ov = override or {}
+        voice = ov.get("voice_name", self.config.get("voice_name",
+                                                      "ru-RU-DmitryNeural"))
+        rate = ov.get("rate", self.config.get("voice_rate", 0))
+        volume = ov.get("volume", self.config.get("voice_volume", 0))
+        pitch = ov.get("pitch", self.config.get("voice_pitch", 0))
+
         communicate = edge_tts.Communicate(
             text,
-            self.config.get("voice_name", "ru-RU-DmitryNeural"),
-            rate=self._build_rate_str(self.config.get("voice_rate", 0)),
-            volume=self._build_volume_str(self.config.get("voice_volume", 0)),
-            pitch=self._build_pitch_str(self.config.get("voice_pitch", 0)),
+            voice,
+            rate=self._build_rate_str(rate),
+            volume=self._build_volume_str(volume),
+            pitch=self._build_pitch_str(pitch),
         )
         await communicate.save(output_file)
 
@@ -536,11 +701,16 @@ class TTSChatBot:
     def tts_worker(self):
         while self.running or not self.speech_queue.empty():
             try:
-                text = self.speech_queue.get(timeout=0.5)
+                item = self.speech_queue.get(timeout=0.5)
             except queue.Empty:
                 continue
-            if text is None:
+            if item is None:
                 break
+
+            if isinstance(item, tuple):
+                text, override = item
+            else:
+                text, override = item, None
 
             try:
                 clean = text.replace("!", "").replace("@", "").strip()
@@ -551,7 +721,12 @@ class TTSChatBot:
                     tmp_path = tmp.name
 
                 try:
-                    asyncio.run(self._synthesize(clean, tmp_path))
+                    asyncio.run(self._synthesize(clean, tmp_path, override))
+
+                    mv = int(self.config.get("master_volume", 100))
+                    if mv < 100:
+                        apply_master_volume(tmp_path, mv)
+
                     self._play_file(tmp_path)
                 finally:
                     try:
@@ -564,15 +739,25 @@ class TTSChatBot:
 
     # ------------------ СПИСКИ ------------------
     def is_blacklisted(self, username):
+        name = (username or "").lower().strip()
+        if not name:
+            return False
         with self.lists_lock:
-            return username.lower() in self.blacklist
+            hit = name in self.blacklist
+        return hit
 
     def is_whitelisted(self, username):
+        name = (username or "").lower().strip()
+        if not name:
+            return False
         with self.lists_lock:
-            return username.lower() in self.whitelist
+            hit = name in self.whitelist
+        return hit
 
     def add_to_blacklist(self, username):
-        name = username.lower().lstrip("@")
+        name = (username or "").lower().lstrip("@").strip()
+        if not name:
+            return False
         with self.lists_lock:
             if name in self.blacklist:
                 return False
@@ -582,7 +767,7 @@ class TTSChatBot:
         return True
 
     def remove_from_blacklist(self, username):
-        name = username.lower().lstrip("@")
+        name = (username or "").lower().lstrip("@").strip()
         with self.lists_lock:
             if name not in self.blacklist:
                 return False
@@ -591,7 +776,9 @@ class TTSChatBot:
         return True
 
     def add_to_whitelist(self, username):
-        name = username.lower().lstrip("@")
+        name = (username or "").lower().lstrip("@").strip()
+        if not name:
+            return False
         with self.lists_lock:
             if name in self.whitelist:
                 return False
@@ -601,7 +788,7 @@ class TTSChatBot:
         return True
 
     def remove_from_whitelist(self, username):
-        name = username.lower().lstrip("@")
+        name = (username or "").lower().lstrip("@").strip()
         with self.lists_lock:
             if name not in self.whitelist:
                 return False
@@ -613,20 +800,40 @@ class TTSChatBot:
         with self.lists_lock:
             return sorted(self.blacklist), sorted(self.whitelist)
 
-    def load_lists(self):
+    def load_lists(self, force=False):
+        if self._lists_loaded and not force:
+            return
+
         path = self.config.get("lists_file", "tts_lists.json")
+
         if not os.path.exists(path):
+            with self.lists_lock:
+                self.blacklist = set(
+                    n.lower() for n in self.config.get("blacklist", []) if n
+                )
+                self.whitelist = set(
+                    n.lower() for n in self.config.get("whitelist", []) if n
+                )
+                self.whitelist -= self.blacklist
+            self._lists_loaded = True
             self.save_lists()
             return
+
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
+
+            file_black = {n.lower().strip() for n in data.get("blacklist", [])
+                          if isinstance(n, str) and n.strip()}
+            file_white = {n.lower().strip() for n in data.get("whitelist", [])
+                          if isinstance(n, str) and n.strip()}
+            file_white -= file_black
+
             with self.lists_lock:
-                file_black = set(n.lower() for n in data.get("blacklist", []))
-                file_white = set(n.lower() for n in data.get("whitelist", []))
-                self.blacklist |= file_black
-                self.whitelist |= file_white
-                self.whitelist -= self.blacklist
+                self.blacklist = file_black
+                self.whitelist = file_white
+
+            self._lists_loaded = True
             self.log(tr("log_lists_loaded", self._lang(),
                         b=len(self.blacklist), w=len(self.whitelist)), "info")
         except Exception as e:
@@ -723,7 +930,7 @@ class TTSChatBot:
         return result
 
     def should_speak(self, username, message):
-        name = username.lower()
+        name = (username or "").lower().strip()
 
         if self.is_blacklisted(name):
             return False, "blacklist"
@@ -759,15 +966,20 @@ class TTSChatBot:
             return dict(self.stats)
 
     # ------------------ УПРАВЛЕНИЕ ИЗ ЧАТА ------------------
-    def is_privileged(self, tags):
+    def is_privileged(self, tags, line=""):
         badges = tags.get("badges", "")
         allowed = self.config.get("command_permission", ["broadcaster", "moderator"])
         for badge in badges.split(","):
             if badge.split("/")[0] in allowed:
                 return True
-        return tags.get("login", "").lower() == self.config.get("channel", "").lower()
 
-    def handle_control_command(self, message, tags):
+        # Резервная проверка по имени из префикса
+        username = self.extract_login(line)
+        if not username:
+            username = tags.get("login", "")
+        return username.lower() == self.config.get("channel", "").lower()
+
+    def handle_control_command(self, message, tags, line=""):
         if not self.config.get("allow_chat_commands", True):
             return False
         msg = message.strip()
@@ -775,7 +987,7 @@ class TTSChatBot:
             return False
         lang = self._lang()
         display = tags.get("display-name", "кто-то")
-        if not self.is_privileged(tags):
+        if not self.is_privileged(tags, line):
             self.log(tr("log_perm_denied", lang, name=display), "warn")
             return True
 
@@ -817,7 +1029,7 @@ class TTSChatBot:
             self.save_lists()
             self.log(tr("log_cmd_save", lang, name=display), "info")
         elif action == "reload":
-            self.load_lists()
+            self.load_lists(force=True)
             self.log(tr("log_cmd_reload", lang, name=display), "info")
         elif action == "help":
             self.log(tr("log_cmd_help", lang), "info")
@@ -835,6 +1047,32 @@ class TTSChatBot:
                     tags[k] = v
         return tags
 
+    @staticmethod
+    def extract_login(line):
+        """
+        Извлекает логин из IRC-строки.
+        Строка может начинаться с @tags или сразу с :prefix.
+        Формат: [@tags...] :username!username@username.tmi.twitch.tv PRIVMSG #channel :msg
+        """
+        rest = line
+
+        # Если строка начинается с тегов @..., отрезаем их до первого пробела
+        if rest.startswith("@"):
+            space_idx = rest.find(" ")
+            if space_idx == -1:
+                return ""
+            rest = rest[space_idx + 1:]
+
+        # Теперь rest должен начинаться с :username!...
+        if not rest.startswith(":"):
+            return ""
+
+        try:
+            prefix = rest[1:].split(" ", 1)[0]  # username!username@...
+            return prefix.split("!", 1)[0]      # username
+        except Exception:
+            return ""
+
     def connect(self):
         lang = self._lang()
         token = self.config.get("oauth_token", "").strip()
@@ -847,7 +1085,7 @@ class TTSChatBot:
         if not token.startswith("oauth:"):
             token = "oauth:" + token
 
-        self.load_lists()
+        self.load_lists(force=False)
 
         try:
             self.sock = socket.socket()
@@ -920,7 +1158,12 @@ class TTSChatBot:
 
         try:
             tags = self.parse_tags(line)
-            username = tags.get("login", "")
+
+            # Главное: логин из префикса строки (с учётом тегов)
+            username = self.extract_login(line)
+            if not username:
+                username = tags.get("login", "")
+
             display = tags.get("display-name", username) or username
 
             msg_part = line.split("PRIVMSG", 1)[1]
@@ -928,12 +1171,24 @@ class TTSChatBot:
                 return
             message = msg_part.split(":", 1)[1]
 
-            if self.handle_control_command(message, tags):
+            # Отладка чёрного списка
+            name_lower = (username or "").lower().strip()
+            with self.lists_lock:
+                in_black = name_lower in self.blacklist
+                black_snapshot = sorted(self.blacklist)
+            self.log(
+                tr("log_debug_black", self._lang(),
+                   login=repr(username), black=black_snapshot, hit=in_black),
+                "info"
+            )
+
+            if self.handle_control_command(message, tags, line):
                 self._bump_stat("__command__")
                 return
 
             ok, result = self.should_speak(username, message)
             lang = self._lang()
+
             if ok:
                 self._bump_stat("__spoken__")
                 self.log(tr("log_spoken", lang, name=display, message=message),
@@ -971,8 +1226,8 @@ class TTSChatBot:
 class TTSApp:
     def __init__(self, root):
         self.root = root
-        self.root.geometry("1100x820")
-        self.root.minsize(900, 680)
+        self.root.geometry("1120x880")
+        self.root.minsize(920, 720)
 
         self.config = self.load_config()
         self.lang = self.config.get("language", "ru")
@@ -986,9 +1241,127 @@ class TTSApp:
         self.tabs = {}
 
         self._build_ui()
+
+        self.bot.load_lists(force=True)
         self._refresh_lists_display()
         self._refresh_stats()
+
+        if not PYDUB_AVAILABLE:
+            self.log(tr("log_pydub_missing", self.lang), "warn")
+        else:
+            self.log(tr("log_pydub_ok", self.lang), "info")
+
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _add_edit_features(self, widget, entry_mode=True):
+        cls = widget.winfo_class()
+        for seq in ("<Control-v>", "<Control-V>", "<<Paste>>",
+                    "<Control-c>", "<Control-C>", "<<Copy>>",
+                    "<Control-x>", "<Control-X>", "<<Cut>>",
+                    "<Control-a>", "<Control-A>"):
+            try:
+                widget.unbind_class(cls, seq)
+            except tk.TclError:
+                pass
+
+        try:
+            widget.configure(undo=True, autoseparators=True, maxundo=-1)
+        except tk.TclError:
+            try:
+                widget.config(undo=True)
+            except tk.TclError:
+                pass
+
+        def action_undo(event=None):
+            try:
+                widget.edit_undo()
+            except tk.TclError:
+                pass
+            return "break"
+
+        def action_redo(event=None):
+            try:
+                widget.edit_redo()
+            except tk.TclError:
+                pass
+            return "break"
+
+        def action_cut(event=None):
+            _cut(widget, self.root, entry_mode)
+            return "break"
+
+        def action_copy(event=None):
+            _copy(widget, self.root)
+            return "break"
+
+        def action_paste(event=None):
+            _paste(widget, entry_mode)
+            return "break"
+
+        def action_delete(event=None):
+            _delete_selection(widget)
+            return "break"
+
+        def action_select_all(event=None):
+            _select_all(widget, entry_mode)
+            return "break"
+
+        menu = tk.Menu(widget, tearoff=0)
+        menu.add_command(label=tr("ctx_undo", self.lang), command=action_undo)
+        menu.add_command(label=tr("ctx_redo", self.lang), command=action_redo)
+        menu.add_separator()
+        menu.add_command(label=tr("ctx_cut", self.lang), command=action_cut)
+        menu.add_command(label=tr("ctx_copy", self.lang), command=action_copy)
+        menu.add_command(label=tr("ctx_paste", self.lang), command=action_paste)
+        menu.add_command(label=tr("ctx_delete", self.lang), command=action_delete)
+        menu.add_separator()
+        menu.add_command(label=tr("ctx_select_all", self.lang),
+                         command=action_select_all)
+
+        def show_menu(event):
+            try:
+                widget.focus_set()
+            except tk.TclError:
+                pass
+            has_sel = _has_selection(widget)
+            state_sel = "normal" if has_sel else "disabled"
+            menu.entryconfig(2, state=state_sel)
+            menu.entryconfig(3, state=state_sel)
+            menu.entryconfig(5, state=state_sel)
+            try:
+                menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                menu.grab_release()
+            return "break"
+
+        widget.bind("<Button-3>", show_menu)
+        widget.bind("<Button-2>", show_menu)
+        widget.bind("<Control-Button-1>", show_menu)
+
+        def on_ctrl(event):
+            kc = event.keycode
+            state = event.state
+            ctrl = bool(state & 0x4) or bool(state & 0x20000)
+            if not ctrl:
+                return None
+
+            if kc == KEYCODE_C:
+                return action_copy(event)
+            if kc == KEYCODE_V:
+                return action_paste(event)
+            if kc == KEYCODE_X:
+                return action_cut(event)
+            if kc == KEYCODE_A:
+                return action_select_all(event)
+            if kc == KEYCODE_Z:
+                return action_undo(event)
+            if kc == KEYCODE_Y:
+                return action_redo(event)
+            if kc == KEYCODE_DELETE:
+                return action_delete(event)
+            return None
+
+        widget.bind("<KeyPress>", on_ctrl, add="+")
 
     # ------------------ КОНФИГ ------------------
     def load_config(self):
@@ -1009,9 +1382,10 @@ class TTSApp:
         self.config["language"] = self.lang
 
         self.config["voice_name"] = self.combo_voice.get().split(" ")[0]
-        self.config["voice_rate"] = int(self.scale_rate.get())
-        self.config["voice_volume"] = int(self.scale_volume.get())
-        self.config["voice_pitch"] = int(self.scale_pitch.get())
+        self.config["voice_rate"] = int(round(float(self.scale_rate.get())))
+        self.config["voice_volume"] = int(round(float(self.scale_volume.get())))
+        self.config["voice_pitch"] = int(round(float(self.scale_pitch.get())))
+        self.config["master_volume"] = int(round(float(self.scale_master.get())))
 
         self.config["read_username"] = self.var_read_username.get()
         self.config["read_says_word"] = self.var_read_says.get()
@@ -1071,14 +1445,13 @@ class TTSApp:
         self.entry_channel = ttk.Entry(top, width=18)
         self.entry_channel.grid(row=0, column=3, padx=(4, 12))
         self.entry_channel.insert(0, self.config.get("channel", ""))
+        self._add_edit_features(self.entry_channel, entry_mode=True)
 
         ttk.Label(top, text=tr("token", self.lang)).grid(row=0, column=4, sticky="w")
         self.entry_token = ttk.Entry(top, width=28, show="•")
         self.entry_token.grid(row=0, column=5, padx=(4, 4))
         self.entry_token.insert(0, self.config.get("oauth_token", ""))
-
-        self.entry_token.bind("<Control-v>", self._on_token_paste)
-        self.entry_token.bind("<Control-V>", self._on_token_paste)
+        self._add_edit_features(self.entry_token, entry_mode=True)
 
         self.var_show_token = tk.BooleanVar(value=False)
         ttk.Checkbutton(top, text="👁", variable=self.var_show_token,
@@ -1120,6 +1493,56 @@ class TTSApp:
         self.chat_log.tag_config("success", foreground="#1a7f37",
                                   font=("Consolas", 10, "bold"))
 
+        cls = self.chat_log.winfo_class()
+        for seq in ("<Control-c>", "<Control-C>", "<<Copy>>",
+                    "<Control-a>", "<Control-A>"):
+            try:
+                self.chat_log.unbind_class(cls, seq)
+            except tk.TclError:
+                pass
+
+        def log_copy(event=None):
+            _copy(self.chat_log, self.root)
+            return "break"
+
+        def log_select_all(event=None):
+            _select_all(self.chat_log, entry_mode=False)
+            return "break"
+
+        def log_on_ctrl(event):
+            state = event.state
+            ctrl = bool(state & 0x4) or bool(state & 0x20000)
+            if not ctrl:
+                return None
+            if event.keycode == KEYCODE_C:
+                return log_copy(event)
+            if event.keycode == KEYCODE_A:
+                return log_select_all(event)
+            return None
+
+        self.chat_log.bind("<KeyPress>", log_on_ctrl, add="+")
+
+        log_menu = tk.Menu(self.chat_log, tearoff=0)
+        log_menu.add_command(label=tr("ctx_copy", self.lang), command=log_copy)
+        log_menu.add_command(label=tr("ctx_select_all", self.lang),
+                             command=log_select_all)
+
+        def log_show_menu(event):
+            try:
+                self.chat_log.focus_set()
+            except tk.TclError:
+                pass
+            has_sel = _has_selection(self.chat_log)
+            log_menu.entryconfig(0, state="normal" if has_sel else "disabled")
+            try:
+                log_menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                log_menu.grab_release()
+            return "break"
+
+        self.chat_log.bind("<Button-3>", log_show_menu)
+        self.chat_log.bind("<Button-2>", log_show_menu)
+
         chat_btns = ttk.Frame(tab_chat)
         chat_btns.pack(fill="x", padx=4, pady=(0, 4))
         ttk.Button(chat_btns, text=tr("btn_clear_log", self.lang),
@@ -1140,13 +1563,18 @@ class TTSApp:
                                       padding=8)
         black_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
 
-        self.listbox_black = tk.Listbox(black_frame, height=14)
+        self.listbox_black = tk.Listbox(black_frame, height=14,
+                                          selectmode="extended",
+                                          activestyle="none")
         self.listbox_black.pack(fill="both", expand=True)
 
         b1 = ttk.Frame(black_frame)
         b1.pack(fill="x", pady=(6, 0))
         self.entry_black = ttk.Entry(b1)
         self.entry_black.pack(side="left", fill="x", expand=True)
+        self._add_edit_features(self.entry_black, entry_mode=True)
+        self.entry_black.bind("<Return>", lambda e: self._add_black())
+
         ttk.Button(b1, text=tr("btn_add", self.lang),
                    command=self._add_black).pack(side="left", padx=(4, 0))
 
@@ -1160,13 +1588,18 @@ class TTSApp:
                                       padding=8)
         white_frame.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
 
-        self.listbox_white = tk.Listbox(white_frame, height=14)
+        self.listbox_white = tk.Listbox(white_frame, height=14,
+                                          selectmode="extended",
+                                          activestyle="none")
         self.listbox_white.pack(fill="both", expand=True)
 
         w1 = ttk.Frame(white_frame)
         w1.pack(fill="x", pady=(6, 0))
         self.entry_white = ttk.Entry(w1)
         self.entry_white.pack(side="left", fill="x", expand=True)
+        self._add_edit_features(self.entry_white, entry_mode=True)
+        self.entry_white.bind("<Return>", lambda e: self._add_white())
+
         ttk.Button(w1, text=tr("btn_add", self.lang),
                    command=self._add_white).pack(side="left", padx=(4, 0))
 
@@ -1181,6 +1614,8 @@ class TTSApp:
 
         bottom_lists = ttk.Frame(tab_lists)
         bottom_lists.pack(fill="x", padx=8, pady=(0, 8))
+        ttk.Button(bottom_lists, text=tr("btn_refresh_lists", self.lang),
+                   command=self._refresh_lists_from_file).pack(side="left", padx=2)
         ttk.Button(bottom_lists, text=tr("btn_save_file", self.lang),
                    command=self._save_lists_manual).pack(side="left", padx=2)
         ttk.Button(bottom_lists, text=tr("btn_reload_file", self.lang),
@@ -1207,6 +1642,7 @@ class TTSApp:
                                                      font=("Consolas", 10),
                                                      state="disabled")
         self.stats_text.pack(fill="both", expand=True, padx=8, pady=8)
+        self._add_edit_features(self.stats_text, entry_mode=False)
         ttk.Button(tab_stats, text="🔄",
                    command=self._refresh_stats).pack(pady=(0, 8))
 
@@ -1279,30 +1715,35 @@ class TTSApp:
         self.entry_max_len = ttk.Entry(nums, width=8)
         self.entry_max_len.grid(row=0, column=1, padx=4)
         self.entry_max_len.insert(0, str(self.config.get("max_length", 200)))
+        self._add_edit_features(self.entry_max_len, entry_mode=True)
 
         ttk.Label(nums, text=tr("min_length", self.lang)).grid(
             row=0, column=2, sticky="w", padx=(12, 0))
         self.entry_min_len = ttk.Entry(nums, width=8)
         self.entry_min_len.grid(row=0, column=3, padx=4)
         self.entry_min_len.insert(0, str(self.config.get("min_length", 2)))
+        self._add_edit_features(self.entry_min_len, entry_mode=True)
 
         ttk.Label(nums, text=tr("caps_threshold", self.lang)).grid(
             row=1, column=0, sticky="w")
         self.entry_caps = ttk.Entry(nums, width=8)
         self.entry_caps.grid(row=1, column=1, padx=4)
         self.entry_caps.insert(0, str(self.config.get("caps_threshold", 0.7)))
+        self._add_edit_features(self.entry_caps, entry_mode=True)
 
         ttk.Label(nums, text=tr("repeat_count", self.lang)).grid(
             row=1, column=2, sticky="w", padx=(12, 0))
         self.entry_repeat_count = ttk.Entry(nums, width=8)
         self.entry_repeat_count.grid(row=1, column=3, padx=4)
         self.entry_repeat_count.insert(0, str(self.config.get("repeat_max_count", 2)))
+        self._add_edit_features(self.entry_repeat_count, entry_mode=True)
 
         ttk.Label(nums, text=tr("repeat_window", self.lang)).grid(
             row=2, column=0, sticky="w")
         self.entry_repeat_window = ttk.Entry(nums, width=8)
         self.entry_repeat_window.grid(row=2, column=1, padx=4)
         self.entry_repeat_window.insert(0, str(self.config.get("repeat_window", 60)))
+        self._add_edit_features(self.entry_repeat_window, entry_mode=True)
 
         sw_frame = ttk.LabelFrame(inner, text=tr("stopwords_frame", self.lang),
                                    padding=8)
@@ -1311,6 +1752,7 @@ class TTSApp:
                                                           font=("Consolas", 10))
         self.text_stopwords.pack(fill="both", expand=True)
         self.text_stopwords.insert("1.0", "\n".join(self.config.get("stopwords", [])))
+        self._add_edit_features(self.text_stopwords, entry_mode=False)
 
         bots_frame = ttk.LabelFrame(inner, text=tr("bots_frame", self.lang),
                                      padding=8)
@@ -1319,6 +1761,7 @@ class TTSApp:
                                                      font=("Consolas", 10))
         self.text_bots.pack(fill="both", expand=True)
         self.text_bots.insert("1.0", "\n".join(self.config.get("bot_names", [])))
+        self._add_edit_features(self.text_bots, entry_mode=False)
 
     def _build_voice_tab(self, parent):
         canvas = tk.Canvas(parent, highlightthickness=0)
@@ -1351,43 +1794,54 @@ class TTSApp:
 
         ttk.Label(frame, text=tr("voice_rate", self.lang)).grid(
             row=1, column=0, sticky="w", pady=4, padx=(8, 0))
+        self.var_rate = tk.IntVar(value=int(self.config.get("voice_rate", 0)))
         self.scale_rate = ttk.Scale(frame, from_=-50, to=100,
-                                     orient="horizontal", length=400)
-        self.scale_rate.set(self.config.get("voice_rate", 0))
+                                     orient="horizontal", length=400,
+                                     command=self._on_rate_change)
+        self.scale_rate.set(self.var_rate.get())
         self.scale_rate.grid(row=1, column=1, pady=4, sticky="ew")
-        self.lbl_rate = ttk.Label(frame, text=f"{int(self.scale_rate.get()):+d}%")
+        self.lbl_rate = ttk.Label(frame, text=f"{self.var_rate.get():+d}%")
         self.lbl_rate.grid(row=1, column=2, padx=8)
-        self.scale_rate.configure(
-            command=lambda v: self.lbl_rate.config(text=f"{int(float(v)):+d}%"))
 
         ttk.Label(frame, text=tr("voice_volume", self.lang)).grid(
             row=2, column=0, sticky="w", pady=4, padx=(8, 0))
-        self.scale_volume = ttk.Scale(frame, from_=-50, to=50,
-                                       orient="horizontal", length=400)
-        self.scale_volume.set(self.config.get("voice_volume", 0))
+        self.var_volume = tk.IntVar(value=int(self.config.get("voice_volume", 0)))
+        self.scale_volume = ttk.Scale(frame, from_=-100, to=50,
+                                       orient="horizontal", length=400,
+                                       command=self._on_volume_change)
+        self.scale_volume.set(self.var_volume.get())
         self.scale_volume.grid(row=2, column=1, pady=4, sticky="ew")
-        self.lbl_volume = ttk.Label(frame, text=f"{int(self.scale_volume.get()):+d}%")
+        self.lbl_volume = ttk.Label(frame, text=f"{self.var_volume.get():+d}%")
         self.lbl_volume.grid(row=2, column=2, padx=8)
-        self.scale_volume.configure(
-            command=lambda v: self.lbl_volume.config(text=f"{int(float(v)):+d}%"))
 
         ttk.Label(frame, text=tr("voice_pitch", self.lang)).grid(
             row=3, column=0, sticky="w", pady=4, padx=(8, 0))
+        self.var_pitch = tk.IntVar(value=int(self.config.get("voice_pitch", 0)))
         self.scale_pitch = ttk.Scale(frame, from_=-50, to=50,
-                                      orient="horizontal", length=400)
-        self.scale_pitch.set(self.config.get("voice_pitch", 0))
+                                      orient="horizontal", length=400,
+                                      command=self._on_pitch_change)
+        self.scale_pitch.set(self.var_pitch.get())
         self.scale_pitch.grid(row=3, column=1, pady=4, sticky="ew")
-        self.lbl_pitch = ttk.Label(frame, text=f"{int(self.scale_pitch.get()):+d}Hz")
+        self.lbl_pitch = ttk.Label(frame, text=f"{self.var_pitch.get():+d}Hz")
         self.lbl_pitch.grid(row=3, column=2, padx=8)
-        self.scale_pitch.configure(
-            command=lambda v: self.lbl_pitch.config(text=f"{int(float(v)):+d}Hz"))
+
+        ttk.Label(frame, text=tr("master_volume", self.lang)).grid(
+            row=4, column=0, sticky="w", pady=4, padx=(8, 0))
+        self.var_master = tk.IntVar(value=int(self.config.get("master_volume", 100)))
+        self.scale_master = ttk.Scale(frame, from_=0, to=100,
+                                       orient="horizontal", length=400,
+                                       command=self._on_master_change)
+        self.scale_master.set(self.var_master.get())
+        self.scale_master.grid(row=4, column=1, pady=4, sticky="ew")
+        self.lbl_master = ttk.Label(frame, text=f"{self.var_master.get()}%")
+        self.lbl_master.grid(row=4, column=2, padx=8)
 
         ttk.Button(frame, text=tr("btn_test_voice", self.lang),
                    command=self._test_voice).grid(
-            row=4, column=0, pady=20, sticky="w", padx=(8, 0))
+            row=5, column=0, pady=20, sticky="w", padx=(8, 0))
 
         fmt_frame = ttk.LabelFrame(frame, text=tr("fmt_frame", self.lang), padding=8)
-        fmt_frame.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(8, 4), padx=8)
+        fmt_frame.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(8, 4), padx=8)
 
         self.var_read_username = tk.BooleanVar(
             value=self.config.get("read_username", True))
@@ -1409,6 +1863,7 @@ class TTSApp:
         self.entry_template.pack(fill="x", pady=2)
         self.entry_template.insert(0, self.config.get("speech_template",
                                                        "{name} пишет: {text}"))
+        self._add_edit_features(self.entry_template, entry_mode=True)
 
         self.lbl_template_preview = ttk.Label(fmt_frame, text="...",
                                                foreground="gray")
@@ -1417,14 +1872,57 @@ class TTSApp:
         self.entry_template.bind("<KeyRelease>",
                                   lambda e: self._update_template_preview())
 
-        ttk.Label(frame, text=tr("voice_note", self.lang), foreground="gray").grid(
-            row=6, column=0, columnspan=3, sticky="w", pady=(12, 8), padx=8)
+        ttk.Label(frame, text=tr("voice_note", self.lang), foreground="gray",
+                  justify="left").grid(
+            row=7, column=0, columnspan=3, sticky="w", pady=(12, 8), padx=8)
         frame.columnconfigure(1, weight=1)
 
         self._update_template_preview()
 
+    def _on_rate_change(self, value):
+        try:
+            v = int(round(float(value)))
+        except (ValueError, TypeError):
+            return
+        self.var_rate.set(v)
+        self.lbl_rate.config(text=f"{v:+d}%")
+
+    def _on_volume_change(self, value):
+        try:
+            v = int(round(float(value)))
+        except (ValueError, TypeError):
+            return
+        self.var_volume.set(v)
+        self.lbl_volume.config(text=f"{v:+d}%")
+
+    def _on_pitch_change(self, value):
+        try:
+            v = int(round(float(value)))
+        except (ValueError, TypeError):
+            return
+        self.var_pitch.set(v)
+        self.lbl_pitch.config(text=f"{v:+d}Hz")
+
+    def _on_master_change(self, value):
+        try:
+            v = int(round(float(value)))
+        except (ValueError, TypeError):
+            return
+        self.var_master.set(v)
+        self.lbl_master.config(text=f"{v}%")
+
     def _build_update_tab(self, parent):
-        frame = ttk.Frame(parent, padding=20)
+        canvas = tk.Canvas(parent, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        outer = ttk.Frame(canvas)
+        outer.bind("<Configure>",
+                   lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=outer, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        frame = ttk.Frame(outer, padding=20)
         frame.pack(fill="both", expand=True)
 
         ttk.Label(frame, text=tr("upd_title", self.lang, name=APP_NAME),
@@ -1433,6 +1931,21 @@ class TTSApp:
                   foreground="gray").pack(anchor="w", pady=(2, 0))
         ttk.Label(frame, text=tr("upd_author", self.lang, author=APP_AUTHOR),
                   foreground="gray").pack(anchor="w", pady=(2, 16))
+
+        warn_frame = tk.Frame(frame, bg="#fff0f0",
+                               highlightbackground="#c92a2a",
+                               highlightthickness=2)
+        warn_frame.pack(fill="x", pady=(0, 16))
+
+        tk.Label(warn_frame, text=tr("upd_warning", self.lang),
+                 bg="#fff0f0", fg="#c92a2a",
+                 font=("", 12, "bold"),
+                 wraplength=900, justify="left").pack(anchor="w", padx=12, pady=(10, 4))
+
+        tk.Label(warn_frame, text=tr("upd_warning_hint", self.lang),
+                 bg="#fff0f0", fg="#a01a1a",
+                 font=("Consolas", 10),
+                 wraplength=900, justify="left").pack(anchor="w", padx=12, pady=(0, 10))
 
         info = ttk.LabelFrame(frame, text=tr("upd_links", self.lang), padding=12)
         info.pack(fill="x", pady=(0, 12))
@@ -1451,26 +1964,63 @@ class TTSApp:
                    command=lambda: self._copy_url(REPO_URL)
                    ).pack(side="left", padx=(0, 8))
 
+        deps = ttk.LabelFrame(frame, text=tr("upd_deps_frame", self.lang), padding=12)
+        deps.pack(fill="x", pady=(0, 12))
+        deps.columnconfigure(0, weight=1)
+
+        ttk.Label(deps, text=tr("upd_python_label", self.lang),
+                  font=("", 10, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 2))
+        ttk.Label(deps, text=tr("upd_python_hint", self.lang),
+                  foreground="gray").grid(row=1, column=0, columnspan=3,
+                                          sticky="w", pady=(0, 6))
+        ttk.Button(deps, text=tr("upd_btn_open_python", self.lang),
+                   command=lambda: self._open_url(PYTHON_DOWNLOAD_URL, "Python")
+                   ).grid(row=1, column=3, padx=(8, 0), sticky="e")
+
+        ttk.Label(deps, text=tr("upd_edge_tts_label", self.lang),
+                  font=("", 10, "bold")).grid(row=2, column=0, sticky="w", pady=(8, 2))
+        ttk.Label(deps, text=tr("upd_edge_tts_hint", self.lang),
+                  foreground="gray").grid(row=3, column=0, columnspan=3,
+                                          sticky="w", pady=(0, 6))
+
+        edge_btns = ttk.Frame(deps)
+        edge_btns.grid(row=3, column=3, padx=(8, 0), sticky="e")
+        ttk.Button(edge_btns, text=tr("upd_btn_open_edge", self.lang),
+                   command=lambda: self._open_url(EDGE_TTS_URL, "edge-tts PyPI")
+                   ).pack(side="left", padx=(0, 4))
+        ttk.Button(edge_btns, text=tr("upd_btn_copy_cmd", self.lang),
+                   command=lambda: self._copy_url("pip install --upgrade edge-tts")
+                   ).pack(side="left", padx=(0, 4))
+        ttk.Button(edge_btns, text=tr("upd_btn_open_edge_gh", self.lang),
+                   command=lambda: self._open_url(EDGE_TTS_GITHUB_URL,
+                                                   "edge-tts GitHub")
+                   ).pack(side="left")
+
         notes = ttk.LabelFrame(frame, text=tr("upd_notes", self.lang), padding=12)
         notes.pack(fill="both", expand=True)
 
         changelog = scrolledtext.ScrolledText(notes, wrap="word",
-                                                font=("Consolas", 10), height=12)
+                                                font=("Consolas", 10), height=10)
         changelog.pack(fill="both", expand=True)
+        self._add_edit_features(changelog, entry_mode=False)
 
         changelog.insert("end", tr("upd_current", self.lang,
                                     version=APP_VERSION) + "\n\n")
         changelog.insert("end", tr("upd_history", self.lang) + "\n")
         changelog.insert("end", "─" * 50 + "\n\n")
         changelog.insert("end",
-            "v4.1.3\n"
+            "v4.4.4\n"
             f"  • Developer: {APP_AUTHOR}\n"
-            "  • Language switcher (RU / EN)\n"
-            "  • Update, Donate, Socials tabs\n"
-            "  • Speech format settings (nickname, «says», custom template)\n\n"
+            "  • Fixed extract_login: now strips @tags before parsing prefix\n"
+            "  • Blacklist now works correctly\n\n"
+            "v4.4.3\n"
+            "  • Added extract_login method\n\n"
+            "v4.4.2\n"
+            "  • Debug log for every message\n\n"
+            "v4.4.1\n"
+            "  • Master volume slider\n\n"
             "v1.0.0\n"
             "  • Initial release\n"
-            "  • Twitch chat via IRC, edge-tts, GUI, filters, lists, stats\n"
         )
         changelog.config(state="disabled")
 
@@ -1561,10 +2111,6 @@ class TTSApp:
         self.log(tr("log_lang_reload_hint", self.lang), "info")
 
     # ------------------ ТОКЕН ------------------
-    def _on_token_paste(self, event=None):
-        self._paste_token_from_clipboard()
-        return "break"
-
     def _toggle_token_visibility(self):
         self.entry_token.config(show="" if self.var_show_token.get() else "•")
 
@@ -1649,6 +2195,8 @@ class TTSApp:
             return
         if self.bot.add_to_blacklist(name):
             self.log(tr("log_added_black", self.lang, name=name), "info")
+        else:
+            self.log(f"ℹ️ {name} уже в списке", "info")
         self.entry_black.delete(0, "end")
         self._refresh_lists_display()
 
@@ -1656,9 +2204,10 @@ class TTSApp:
         sel = self.listbox_black.curselection()
         if not sel:
             return
-        name = self.listbox_black.get(sel[0])
-        if self.bot.remove_from_blacklist(name):
-            self.log(tr("log_removed_black", self.lang, name=name), "info")
+        names = [self.listbox_black.get(i) for i in sel]
+        for name in names:
+            if self.bot.remove_from_blacklist(name):
+                self.log(tr("log_removed_black", self.lang, name=name), "info")
         self._refresh_lists_display()
 
     def _add_white(self):
@@ -1667,6 +2216,8 @@ class TTSApp:
             return
         if self.bot.add_to_whitelist(name):
             self.log(tr("log_added_white", self.lang, name=name), "info")
+        else:
+            self.log(f"ℹ️ {name} уже в списке", "info")
         self.entry_white.delete(0, "end")
         self._refresh_lists_display()
 
@@ -1674,9 +2225,10 @@ class TTSApp:
         sel = self.listbox_white.curselection()
         if not sel:
             return
-        name = self.listbox_white.get(sel[0])
-        if self.bot.remove_from_whitelist(name):
-            self.log(tr("log_removed_white", self.lang, name=name), "info")
+        names = [self.listbox_white.get(i) for i in sel]
+        for name in names:
+            if self.bot.remove_from_whitelist(name):
+                self.log(tr("log_removed_white", self.lang, name=name), "info")
         self._refresh_lists_display()
 
     def _refresh_lists_display(self):
@@ -1688,24 +2240,68 @@ class TTSApp:
         for n in w:
             self.listbox_white.insert("end", n)
 
+    def _refresh_lists_from_file(self):
+        self.bot.load_lists(force=True)
+        self._refresh_lists_display()
+        self.log(tr("log_lists_refreshed", self.lang), "info")
+
     def _save_lists_manual(self):
         self.bot.save_lists()
         self.log(tr("log_lists_saved", self.lang), "info")
 
     def _reload_lists(self):
-        self.bot.load_lists()
+        self.bot.load_lists(force=True)
         self._refresh_lists_display()
         self.log(tr("log_lists_reloaded", self.lang), "info")
 
     def _test_voice(self):
-        self.save_config()
-        self.bot.config = self.config
         try:
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
                 tmp_path = tmp.name
 
-            test_phrase = self.bot._build_phrase("Vasya", "privet vsem")
-            asyncio.run(self.bot._synthesize(test_phrase, tmp_path))
+            voice_name = self.combo_voice.get().split(" ")[0] or "ru-RU-DmitryNeural"
+            rate = int(round(float(self.scale_rate.get())))
+            volume = int(round(float(self.scale_volume.get())))
+            pitch = int(round(float(self.scale_pitch.get())))
+            master = int(round(float(self.scale_master.get())))
+
+            override = {
+                "voice_name": voice_name,
+                "rate": rate,
+                "volume": volume,
+                "pitch": pitch,
+            }
+
+            read_name = self.var_read_username.get()
+            read_says = self.var_read_says.get()
+            template = self.entry_template.get() or "{name} пишет: {text}"
+
+            if "{text}" not in template:
+                template = template + " {text}"
+            if not read_name:
+                template = template.replace("{name}", "")
+            if not read_says:
+                template = re.sub(r"\s*пишет\s*:?\s*", " ", template,
+                                  flags=re.IGNORECASE)
+                template = re.sub(r"\s*говорит\s*:?\s*", " ", template,
+                                  flags=re.IGNORECASE)
+                template = re.sub(r"\s*says\s*:?\s*", " ", template,
+                                  flags=re.IGNORECASE)
+
+            try:
+                test_phrase = template.format(name="Vasya", text="привет всем")
+            except (KeyError, IndexError):
+                test_phrase = "привет всем"
+            test_phrase = re.sub(r"\s+", " ", test_phrase).strip()
+            test_phrase = re.sub(r"^[:\s]+", "", test_phrase)
+            if not test_phrase:
+                test_phrase = "привет всем"
+
+            asyncio.run(self.bot._synthesize(test_phrase, tmp_path, override))
+
+            if master < 100:
+                apply_master_volume(tmp_path, master)
+
             self.bot._play_file(tmp_path)
             self.root.after(8000, lambda: self._cleanup_temp(tmp_path))
         except Exception as e:
@@ -1719,9 +2315,10 @@ class TTSApp:
             pass
 
     def _clear_log(self):
+        prev = self.chat_log.cget("state")
         self.chat_log.config(state="normal")
         self.chat_log.delete("1.0", "end")
-        self.chat_log.config(state="disabled")
+        self.chat_log.config(state=prev if prev else "disabled")
 
     def _save_log(self):
         from tkinter import filedialog
@@ -1801,11 +2398,12 @@ class TTSApp:
 
     def _log_ui(self, text, tag):
         timestamp = time.strftime("[%H:%M:%S] ")
+        prev = self.chat_log.cget("state")
         self.chat_log.config(state="normal")
         self.chat_log.insert("end", timestamp, "info")
         self.chat_log.insert("end", text + "\n", tag)
         self.chat_log.see("end")
-        self.chat_log.config(state="disabled")
+        self.chat_log.config(state=prev if prev else "disabled")
 
 
 # ==================================================================
